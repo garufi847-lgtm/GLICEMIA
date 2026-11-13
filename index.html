@@ -77,6 +77,14 @@ svg text{font:11px system-ui;fill:#5a6f78}
       <div class="row"><select id="f" aria-label="Alimento"></select><input id="fg" type="number" inputmode="numeric" placeholder="grammi" aria-label="Grammi"></div>
       <div class="row" style="margin-top:8px"><button class="sec" id="addF">Aggiungi ai carboidrati</button><button class="ghost" id="clrF">Azzera</button></div>
       <div class="meal" id="meal"></div>
+      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;color:var(--teal-d)">Alimento non in elenco? Aggiungilo</summary>
+        <div class="row" style="margin-top:10px">
+          <div style="flex:2"><label for="nf-n">Nome</label><input id="nf-n" type="text" maxlength="40" placeholder="es. Torta della nonna"></div>
+          <div><label for="nf-c">Carbo per 100 g</label><input id="nf-c" type="number" inputmode="decimal" min="0" max="100" step="0.1" placeholder="es. 45"></div>
+        </div>
+        <button class="sec" id="nf-save" style="width:100%;margin-top:8px">Salva alimento</button>
+        <p class="note" style="margin:6px 0 0">Sull'etichetta usa la voce "carboidrati" (il totale), non solo "di cui zuccheri".</p>
+      </details>
       <p class="note" style="margin:8px 0 0">Valori indicativi per 100 g. Se c'è l'etichetta, usa quella.</p>
     </div>
 
@@ -136,6 +144,10 @@ svg text{font:11px system-ui;fill:#5a6f78}
       <button id="saveSet" style="width:100%;margin-top:14px">Salva impostazioni</button>
     </div>
     <div class="card">
+      <h2>I tuoi alimenti</h2>
+      <div id="custom"></div>
+    </div>
+    <div class="card">
       <h2>Come calcola</h2>
       <p class="note">Insulina per i carboidrati = carboidrati ÷ rapporto.<br>Correzione = (glicemia − target) ÷ fattore (se la glicemia è sotto target, la dose si riduce).<br>Dose = carboidrati + correzione − insulina ancora attiva, mai sotto zero.<br>Con attività fisica la dose viene ridotta della percentuale scelta.<br>L'insulina attiva scende in modo lineare fino a zero nella durata impostata.</p>
       <p class="note">È un aiuto al calcolo, non sostituisce il medico. Se un risultato ti sembra strano, ricontrolla i numeri e chiedi.</p>
@@ -166,7 +178,15 @@ const FOODS=[
 ["Mela",14],["Banana",21],["Arancia",9],["Succo di frutta",11],["Coca-Cola",10.6],
 ["Latte",5],["Yogurt bianco",5],["Gelato",24],["Cioccolato al latte",56],["Crema alla nocciola",57]
 ];
-$('#f').innerHTML=FOODS.map((x,i)=>`<option value="${i}">${x[0]} (${x[1]} g/100 g)</option>`).join('');
+S.foods=Array.isArray(S.foods)?S.foods:[];
+const allFoods=()=>[...FOODS,...S.foods.map(f=>[f.n,f.c])];
+function renderFoods(sel){
+  const A=allFoods();
+  $('#f').innerHTML=A.map((x,i)=>`<option value="${i}">${i>=FOODS.length?'★ ':''}${x[0].replace(/</g,'&lt;')} (${fmt(x[1],x[1]%1?1:0)} g/100 g)</option>`).join('');
+  if(sel!=null)$('#f').value=sel;
+  $('#custom').innerHTML=S.foods.length?S.foods.map((f,i)=>`<div class="entry"><div class="main">${f.n.replace(/</g,'&lt;')}<div class="t">${fmt(f.c,f.c%1?1:0)} g carbo / 100 g</div></div><button class="del" data-i="${i}">Elimina</button></div>`).join(''):'<p class="note">Nessun alimento aggiunto. Puoi aggiungerli dalla schermata Calcola.</p>';
+  document.querySelectorAll('#custom .del').forEach(b=>b.onclick=()=>{if(confirm('Eliminare questo alimento?')){S.foods.splice(+b.dataset.i,1);save();renderFoods()}});
+}
 let meal=[];
 
 const fmt=(n,d=1)=>Number(n).toFixed(d).replace('.',',');
@@ -236,11 +256,19 @@ function recalc(){
   if(!$('#given').dataset.touched) $('#given').value=total||'';
 }
 
+$('#nf-save').onclick=()=>{
+  const n=$('#nf-n').value.trim(), c=parseFloat($('#nf-c').value);
+  if(!n) return $('#nf-n').focus();
+  if(isNaN(c)||c<0||c>100) return alert('I carboidrati per 100 g devono essere tra 0 e 100.');
+  S.foods.push({n,c});save();
+  renderFoods(FOODS.length+S.foods.length-1);
+  $('#nf-n').value='';$('#nf-c').value='';$('#fg').focus();
+};
 function renderMeal(){
   $('#meal').innerHTML=meal.map(m=>`<span class="chip">${m.n} ${m.g} g → ${fmt(m.c,0)} g</span>`).join('');
 }
 $('#addF').onclick=()=>{
-  const f=FOODS[$('#f').value], gr=parseFloat($('#fg').value);
+  const f=allFoods()[$('#f').value], gr=parseFloat($('#fg').value);
   if(!gr||gr<=0) return $('#fg').focus();
   const ch=gr*f[1]/100;
   meal.push({n:f[0],g:gr,c:ch});
@@ -318,7 +346,7 @@ function show(v){
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.v));
 
-loadSet();renderLog();recalc();
+loadSet();renderFoods();renderLog();recalc();
 if(!S.cfg.icr||!S.cfg.isf) show('set');
 setInterval(()=>{renderIob();recalc()},30000);
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});

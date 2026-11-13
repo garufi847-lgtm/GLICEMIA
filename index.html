@@ -80,6 +80,15 @@ svg text{font:11px system-ui;fill:#5a6f78}
       <p class="note" style="margin:8px 0 0">Valori indicativi per 100 g. Se c'è l'etichetta, usa quella.</p>
     </div>
 
+    <div class="card">
+      <h2>Attività fisica</h2>
+      <div class="row">
+        <div><label for="ai">Intensità</label><select id="ai"><option value="0">Nessuna</option><option value="l">Leggera</option><option value="m">Moderata</option><option value="h">Intensa</option></select></div>
+        <div><label for="ad">Durata (minuti)</label><input id="ad" type="number" inputmode="numeric" min="5" max="300" placeholder="es. 45"></div>
+      </div>
+      <p class="note" style="margin:8px 0 0">Per attività appena fatta o in programma a breve: riduce la dose.</p>
+    </div>
+
     <div class="card" id="resCard">
       <div id="alerts"></div>
       <div class="result"><div class="dose" id="dose">–<span>U</span></div><div class="note" id="doseNote">Inserisci glicemia e/o carboidrati</div></div>
@@ -117,11 +126,18 @@ svg text{font:11px system-ui;fill:#5a6f78}
         <div><label for="s-max">Dose massima per volta (U)</label><input id="s-max" type="number" inputmode="decimal" step="0.5"></div>
       </div>
       <div style="margin-top:10px"><label for="s-low">Soglia glicemia bassa (mg/dL)</label><input id="s-low" type="number" inputmode="numeric"></div>
+      <h2 style="margin-top:16px">Riduzione per attività fisica (% di dose, per 30–60 min)</h2>
+      <div class="row">
+        <div><label for="s-al">Leggera</label><input id="s-al" type="number" inputmode="numeric" min="0" max="75"></div>
+        <div><label for="s-am">Moderata</label><input id="s-am" type="number" inputmode="numeric" min="0" max="75"></div>
+        <div><label for="s-ah">Intensa</label><input id="s-ah" type="number" inputmode="numeric" min="0" max="75"></div>
+      </div>
+      <p class="note" style="margin:8px 0 0">Sotto i 30 minuti la riduzione è dimezzata, sopra i 60 aumenta della metà. Massimo 75%. Valori di partenza solo indicativi: da concordare con il diabetologo.</p>
       <button id="saveSet" style="width:100%;margin-top:14px">Salva impostazioni</button>
     </div>
     <div class="card">
       <h2>Come calcola</h2>
-      <p class="note">Insulina per i carboidrati = carboidrati ÷ rapporto.<br>Correzione = (glicemia − target) ÷ fattore (se la glicemia è sotto target, la dose si riduce).<br>Dose = carboidrati + correzione − insulina ancora attiva, mai sotto zero.<br>L'insulina attiva scende in modo lineare fino a zero nella durata impostata.</p>
+      <p class="note">Insulina per i carboidrati = carboidrati ÷ rapporto.<br>Correzione = (glicemia − target) ÷ fattore (se la glicemia è sotto target, la dose si riduce).<br>Dose = carboidrati + correzione − insulina ancora attiva, mai sotto zero.<br>Con attività fisica la dose viene ridotta della percentuale scelta.<br>L'insulina attiva scende in modo lineare fino a zero nella durata impostata.</p>
       <p class="note">È un aiuto al calcolo, non sostituisce il medico. Se un risultato ti sembra strano, ricontrolla i numeri e chiedi.</p>
     </div>
     <button class="ghost" id="reset" style="width:100%">Cancella tutti i dati</button>
@@ -137,10 +153,10 @@ svg text{font:11px system-ui;fill:#5a6f78}
 <script>
 const $=s=>document.querySelector(s);
 const KEY='bolo.v1';
-const DEF={cfg:{icr:null,isf:null,target:110,dia:4,step:0.5,max:15,low:70},log:[]};
+const DEF={cfg:{icr:null,isf:null,target:110,dia:4,step:0.5,max:15,low:70,act:{l:10,m:25,h:40}},log:[]};
 let S;
 try{S=JSON.parse(localStorage.getItem(KEY))||DEF}catch(e){S=DEF}
-S.cfg={...DEF.cfg,...S.cfg};
+S.cfg={...DEF.cfg,...S.cfg};S.cfg.act={...DEF.cfg.act,...(S.cfg.act||{})};
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 
 const FOODS=[
@@ -193,7 +209,15 @@ function recalc(){
   }
   const carbIns=hasC?carbs/c.icr:0;
   const corr=hasG?(g-c.target)/c.isf:0;
-  let raw=carbIns+corr-iob;
+  const ai=$('#ai').value, ad=parseFloat($('#ad').value);
+  let actPct=0, actF=1;
+  if(ai!=='0'){
+    if(isNaN(ad)||ad<=0){add('warn','Hai scelto un\'attività: inserisci anche la durata in minuti.');}
+    else{actF=ad<30?0.5:(ad<=60?1:1.5);actPct=Math.min(75,c.act[ai]*actF);}
+  }
+  const pre=carbIns+corr-iob;
+  const actCut=pre>0?pre*actPct/100:0;
+  let raw=pre-actCut;
   const total=Math.max(0,Math.round(raw/c.step)*c.step);
   calc={total,raw};
   $('#dose').innerHTML=fmt(total,c.step<0.5?1:(c.step<1?1:0))+'<span>U</span>';
@@ -203,8 +227,10 @@ function recalc(){
     (hasC?row(`Carboidrati ${fmt(carbs,0)} g ÷ ${fmt(c.icr)}`,fmt(carbIns,2)+' U'):'')+
     (hasG?row(`Correzione (${g} − ${c.target}) ÷ ${fmt(c.isf,0)}`,(corr>=0?'+':'')+fmt(corr,2)+' U'):'')+
     row('Insulina ancora attiva','− '+fmt(iob,2)+' U')+
+    (actPct>0?row(`Attività fisica −${fmt(actPct,0)}%`,'− '+fmt(actCut,2)+' U'):'')+
     row('Totale (arrotondato)',fmt(total,2)+' U','tot');
   if(total>c.max) add('bad',`La dose supera il massimo impostato (${fmt(c.max)} U). Ricontrolla glicemia e carboidrati prima di fare qualsiasi cosa.`);
+  if(actPct>0&&hasG&&g<c.target+20) add('warn','Con attività fisica e glicemia vicina al target c\'è rischio di ipoglicemia: valuta carboidrati extra come indicato dal diabetologo e ricontrolla più tardi.');
   if(hasG&&g>=300) add('warn','Glicemia molto alta: segui le indicazioni del diabetologo per questi casi.');
   if(hasC&&carbs>150) add('warn','Carboidrati molto alti: controlla di non aver sbagliato i grammi.');
   if(!$('#given').dataset.touched) $('#given').value=total||'';
@@ -223,15 +249,15 @@ $('#addF').onclick=()=>{
   $('#fg').value='';renderMeal();delete $('#given').dataset.touched;recalc();
 };
 $('#clrF').onclick=()=>{meal=[];$('#c').value='';renderMeal();delete $('#given').dataset.touched;recalc()};
-['#g','#c'].forEach(s=>$(s).addEventListener('input',()=>{delete $('#given').dataset.touched;recalc()}));
+['#g','#c','#ai','#ad'].forEach(s=>$(s).addEventListener('input',()=>{delete $('#given').dataset.touched;recalc()}));
 $('#given').addEventListener('input',()=>{$('#given').dataset.touched=1});
 
 function logEntry(units){
   const g=parseFloat($('#g').value), c=parseFloat($('#c').value);
   if(isNaN(g)&&!units) return alert('Inserisci almeno la glicemia o una dose.');
-  S.log.push({id:Date.now(),t:Date.now(),g:isNaN(g)?null:g,carbs:isNaN(c)?null:c,units:units||0});
+  S.log.push({id:Date.now(),t:Date.now(),g:isNaN(g)?null:g,carbs:isNaN(c)?null:c,units:units||0,act:$('#ai').value!=='0'?{i:$('#ai').value,d:parseFloat($('#ad').value)||null}:null});
   save();
-  $('#g').value='';$('#c').value='';$('#given').value='';delete $('#given').dataset.touched;meal=[];renderMeal();recalc();renderLog();
+  $('#g').value='';$('#c').value='';$('#ai').value='0';$('#ad').value='';$('#given').value='';delete $('#given').dataset.touched;meal=[];renderMeal();recalc();renderLog();
 }
 $('#saveDose').onclick=()=>{
   const u=parseFloat($('#given').value);
@@ -243,7 +269,7 @@ $('#saveG').onclick=()=>logEntry(0);
 
 function renderLog(){
   const L=[...S.log].sort((a,b)=>b.t-a.t);
-  $('#list').innerHTML=L.length?L.slice(0,150).map(e=>`<div class="entry"><div class="main"><div class="t">${when(e.t)}</div>${e.carbs?`<span>${fmt(e.carbs,0)} g carbo</span>`:''}</div>${e.g?`<span class="pill g">${e.g}</span>`:''}${e.units?`<span class="pill u">${fmt(e.units)} U</span>`:''}<button class="del" data-id="${e.id}" aria-label="Elimina">Elimina</button></div>`).join(''):'<p class="note">Ancora nessuna registrazione.</p>';
+  $('#list').innerHTML=L.length?L.slice(0,150).map(e=>`<div class="entry"><div class="main"><div class="t">${when(e.t)}</div>${e.carbs?`<span>${fmt(e.carbs,0)} g carbo</span>`:''}${e.act?` <span class="chip">${{l:'attività leggera',m:'attività moderata',h:'attività intensa'}[e.act.i]}${e.act.d?' '+e.act.d+' min':''}</span>`:''}</div>${e.g?`<span class="pill g">${e.g}</span>`:''}${e.units?`<span class="pill u">${fmt(e.units)} U</span>`:''}<button class="del" data-id="${e.id}" aria-label="Elimina">Elimina</button></div>`).join(''):'<p class="note">Ancora nessuna registrazione.</p>';
   document.querySelectorAll('.del').forEach(b=>b.onclick=()=>{if(confirm('Eliminare questa registrazione?')){S.log=S.log.filter(e=>e.id!=b.dataset.id);save();renderLog();recalc()}});
   drawChart();
 }
@@ -265,19 +291,22 @@ function drawChart(){
   $('#chart').innerHTML=s+'</svg>';
 }
 $('#csv').onclick=()=>{
-  const rows=['Data;Ora;Glicemia mg/dL;Carboidrati g;Insulina U',...[...S.log].sort((a,b)=>a.t-b.t).map(e=>{const d=new Date(e.t);return [d.toLocaleDateString('it-IT'),d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),e.g??'',e.carbs??'',e.units?String(e.units).replace('.',','):''].join(';')})];
+  const rows=['Data;Ora;Glicemia mg/dL;Carboidrati g;Insulina U;Attività',...[...S.log].sort((a,b)=>a.t-b.t).map(e=>{const d=new Date(e.t);return [d.toLocaleDateString('it-IT'),d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),e.g??'',e.carbs??'',e.units?String(e.units).replace('.',','):'',e.act?({l:'leggera',m:'moderata',h:'intensa'}[e.act.i]+(e.act.d?' '+e.act.d+' min':'')):''].join(';')})];
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download='diario-glicemia.csv';a.click();
 };
 
 function loadSet(){
   const c=S.cfg;
   $('#s-icr').value=c.icr??'';$('#s-isf').value=c.isf??'';$('#s-target').value=c.target;$('#s-dia').value=c.dia;
-  $('#s-step').value=String(c.step);$('#s-max').value=c.max;$('#s-low').value=c.low;
+  $('#s-al').value=c.act.l;$('#s-am').value=c.act.m;$('#s-ah').value=c.act.h;$('#s-step').value=String(c.step);$('#s-max').value=c.max;$('#s-low').value=c.low;
 }
 $('#saveSet').onclick=()=>{
   const v=id=>parseFloat($(id).value);
   const n={icr:v('#s-icr'),isf:v('#s-isf'),target:v('#s-target'),dia:v('#s-dia'),step:v('#s-step'),max:v('#s-max'),low:v('#s-low')};
-  if(Object.values(n).some(x=>isNaN(x)||x<=0)) return alert('Compila tutti i campi con numeri validi.');
+  n.act={l:v('#s-al'),m:v('#s-am'),h:v('#s-ah')};
+  if(Object.values(n.act).some(x=>isNaN(x)||x<0||x>75)) return alert('La riduzione per attività deve essere tra 0 e 75.');
+  const {act:_a,...rest}=n;
+  if(Object.values(rest).some(x=>isNaN(x)||x<=0)) return alert('Compila tutti i campi con numeri validi.');
   S.cfg=n;save();alert('Impostazioni salvate.');show('calc');recalc();
 };
 $('#reset').onclick=()=>{if(confirm('Cancellare diario e impostazioni? Non si può annullare.')){localStorage.removeItem(KEY);location.reload()}};

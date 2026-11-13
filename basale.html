@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e5f66">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Stima insulina basale</title>
+<style>
+:root{--ink:#10242f;--muted:#5a6f78;--bg:#edf5f4;--card:#fff;--line:#d3e2e0;--teal:#0e5f66;--teal-d:#0a474d;--mint:#c9ebe4;--warn-bg:#fff1d6;--warn:#8a5200;--bad-bg:#fde3df;--bad:#a3271a;--r:16px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(24px + env(safe-area-inset-bottom))}
+main{max-width:560px;margin:0 auto;padding:14px}
+a.back{display:inline-block;color:var(--teal-d);font-weight:600;text-decoration:none;padding:6px 0}
+h1{font-size:1.35rem;margin:6px 0 14px;letter-spacing:-.01em}
+h2{font-size:1.05rem;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:4px}
+input,select{width:100%;font:inherit;font-size:1.15rem;padding:11px 12px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+input:focus,select:focus{outline:3px solid #7cc7c0;outline-offset:1px}
+.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
+.alert{border-radius:12px;padding:10px 12px;margin:10px 0;font-size:.95rem}
+.alert.warn{background:var(--warn-bg);color:var(--warn)}
+.alert.bad{background:var(--bad-bg);color:var(--bad);font-weight:600}
+.big{font-size:2.6rem;font-weight:800;letter-spacing:-.03em;line-height:1.05;color:var(--teal)}
+.big span{font-size:1.1rem;font-weight:600;color:var(--muted);margin-left:4px}
+.note{font-size:.85rem;color:var(--muted)}
+.steps{width:100%;border-collapse:collapse;margin-top:10px;font-size:.95rem}
+.steps td{padding:6px 0;border-top:1px solid var(--line)}
+.steps td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.chk{display:flex;gap:10px;align-items:flex-start;margin-top:12px}
+.chk input{width:22px;height:22px;margin-top:2px;flex:none}
+.chk label{margin:0;font-size:.95rem;color:var(--ink)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="index.html">← Torna al calcolo del bolo</a>
+  <h1>Stima insulina basale</h1>
+
+  <div class="alert warn">È solo un valore di riferimento per parlarne con il diabetologo. La dose basale la prescrive e la aggiusta il medico, guardando le glicemie a digiuno e di notte. Non usarla per iniziare o cambiare la terapia da soli.</div>
+
+  <div class="card">
+    <div class="row">
+      <div><label for="w">Peso (kg)</label><input id="w" type="number" inputmode="decimal" min="5" max="200" step="0.1" placeholder="es. 52"></div>
+      <div><label for="a">Età (anni)</label><input id="a" type="number" inputmode="numeric" min="1" max="99" placeholder="es. 13"></div>
+    </div>
+    <div style="margin-top:10px">
+      <label for="p">Fase di crescita</label>
+      <select id="p">
+        <option value="pre">Prima della pubertà</option>
+        <option value="pub">In pubertà</option>
+        <option value="adu">Dopo la pubertà / adulta</option>
+      </select>
+    </div>
+    <div class="chk"><input type="checkbox" id="rem"><label for="rem">Diabete diagnosticato da poco, con fabbisogno ancora basso (fase di remissione parziale)</label></div>
+    <div style="margin-top:12px">
+      <label for="t">Dose totale giornaliera già prescritta (U) — facoltativa</label>
+      <input id="t" type="number" inputmode="decimal" min="1" step="0.5" placeholder="basale + boli di un giorno">
+    </div>
+  </div>
+
+  <div class="card" id="out">
+    <p class="note" style="margin:0">Inserisci peso ed età.</p>
+  </div>
+
+  <div class="card">
+    <h2>Come si calcola</h2>
+    <p class="note" style="margin:0 0 8px">1) Si stima la dose totale giornaliera (basale + boli) moltiplicando il peso per un fabbisogno medio per chilo, che cambia con la fase di crescita: prima della pubertà 0,7–1,0 U/kg, in pubertà 1,0–1,5 U/kg, dopo la pubertà o da adulti 0,4–1,0 U/kg.</p>
+    <p class="note" style="margin:0 0 8px">2) La basale è di solito il 40–50% del totale; il resto copre i pasti e le correzioni.</p>
+    <p class="note" style="margin:0">Sono intervalli medi di popolazione: il fabbisogno reale può essere fuori. Per questo l'app mostra un intervallo e non un numero unico, e se esiste già una dose totale prescritta il confronto più affidabile è quello.</p>
+  </div>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+const fmt=(n,d=1)=>Number(n).toFixed(d).replace('.',',');
+const RANGE={pre:[0.7,1.0],pub:[1.0,1.5],adu:[0.4,1.0]};
+
+$('#a').addEventListener('input',()=>{
+  const a=parseFloat($('#a').value);
+  if(isNaN(a))return;
+  $('#p').value=a<10?'pre':(a<18?'pub':'adu');
+  calc();
+});
+
+function calc(){
+  const w=parseFloat($('#w').value), a=parseFloat($('#a').value), t=parseFloat($('#t').value);
+  const O=$('#out');
+  if(isNaN(w)||isNaN(a)){O.innerHTML='<p class="note" style="margin:0">Inserisci peso ed età.</p>';return}
+  if(w<5||w>200||a<1||a>99){O.innerHTML='<div class="alert bad">Controlla peso ed età: i valori sembrano fuori scala.</div>';return}
+
+  let [lo,hi]=RANGE[$('#p').value];
+  const rem=$('#rem').checked;
+  if(rem){lo=0.1;hi=0.5}
+  const tl=w*lo, th=w*hi, tm=(tl+th)/2;
+  const bl=tl*0.4, bh=th*0.5, bm=tm*0.45;
+
+  let h='';
+  if(a<6) h+='<div class="alert bad">Sotto i 6 anni le dosi cambiano molto da bambino a bambino: questa stima non è adatta, serve lo specialista.</div>';
+  if(rem) h+='<div class="alert warn">In remissione parziale il fabbisogno è di solito sotto 0,5 U/kg al giorno e varia di settimana in settimana: qui vedi solo un limite alto, la dose la decide il medico.</div>';
+
+  if(!isNaN(t)&&t>0){
+    const kg=t/w;
+    h+=`<h2>Dalla dose totale prescritta</h2>
+        <div class="big">${fmt(t*0.4)}–${fmt(t*0.5)}<span>U basale</span></div>
+        <p class="note" style="margin:6px 0 0">Il 40–50% di ${fmt(t)} U al giorno. Corrisponde a ${fmt(kg,2)} U/kg di dose totale.</p>`;
+    if(kg>hi*1.5||kg<lo*0.5) h+=`<div class="alert warn">La dose totale per chilo (${fmt(kg,2)}) è molto lontana dall'intervallo medio (${fmt(lo,1)}–${fmt(hi,1)}). Ricontrolla peso e dose, oppure parlane con il medico: può essere normale, ma va guardato.</div>`;
+    h+='<hr style="border:0;border-top:1px solid var(--line);margin:14px 0">';
+  }
+
+  h+=`<h2>Stima dal peso (${fmt(w)} kg)</h2>
+      <div class="big">${rem?'fino a '+fmt(bh):fmt(bl)+'–'+fmt(bh)}<span>U basale al giorno</span></div>
+      <p class="note" style="margin:6px 0 0">${rem?'Limite alto, non una dose consigliata.':'Valore centrale circa '+fmt(bm)+' U.'}</p>
+      <table class="steps">
+        <tr><td>Fabbisogno per chilo</td><td>${rem?'sotto '+fmt(hi,1):fmt(lo,1)+'–'+fmt(hi,1)} U/kg</td></tr>
+        <tr><td>Dose totale giornaliera</td><td>${rem?'fino a '+fmt(th):fmt(tl)+'–'+fmt(th)} U</td></tr>
+        <tr><td>Quota basale</td><td>40–50%</td></tr>
+      </table>
+      <p class="note" style="margin:10px 0 0">Se la basale è divisa in due iniezioni, la ripartizione la indica il medico.</p>`;
+  O.innerHTML=h;
+}
+['#w','#t'].forEach(s=>$(s).addEventListener('input',calc));
+['#p','#rem'].forEach(s=>$(s).addEventListener('change',calc));
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
